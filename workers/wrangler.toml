@@ -1,0 +1,21 @@
+name = "clothes"
+main = "src/index.ts"
+compatibility_date = "2024-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+[dev]
+port = 8787
+
+[vars]
+ENVIRONMENT = "development"
+# 선택: R2 Public Domain 또는 CDN 도메인이 있으면 설정
+# R2_PUBLIC_BASE_URL = "https://cdn.your-domain.com"
+
+# 비밀 값은 wrangler secret put 으로 설정
+# wrangler secret put SUPABASE_URL
+# wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "clothes-images"
+preview_bucket_name = "clothes-images-preview"

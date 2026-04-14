@@ -1,0 +1,11 @@
+{
+  "name": "clothes-app",
+  "version": "0.0.1",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "mobile": "pnpm --filter mobile start",
+    "workers": "pnpm --filter workers dev",
+    "workers:deploy": "pnpm --filter workers run deploy"
+  }
+}

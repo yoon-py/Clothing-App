@@ -1,0 +1,516 @@
+ 거래 희망 장소 기능 추가                                                                                                                                              │
+│                                                                                                                                                                       │
+│ Context                                                                                                                                                               │
+│                                                                                                                                                                       │
+│ 상품 등록 시 거래 희망 장소를 지정하고, 상품 상세 페이지에서 지도와 함께 표시하는 기능. 당근마켓 스크린샷 참고: 상세 페이지 본문 아래에 "거래 희망 장소 OO >" 텍스트  │
+│ + 지도 미리보기가 표시됨.                                                                                                                                             │
+│                                                                                                                                                                       │
+│ 당근마켓 UX 분석                                                                                                                                                      │
+│                                                                                                                                                                       │
+│ - 업로드: 장소명을 입력하거나 지도에서 핀을 찍어 거래 장소 선택                                                                                                       │
+│ - 상세 페이지: 본문 아래 거래 희망 장소  장소명 > 행 + 아래에 react-native-maps 미리보기 (높이 ~160, 라운드, 중앙에 핀 마커, "지도 보기" 버튼)                        │
+│ - 장소는 선택사항 (없으면 섹션 자체를 숨김)                                                                                                                           │
+│                                                                                                                                                                       │
+│ 변경 범위                                                                                                                                                             │
+│                                                                                                                                                                       │
+│ 1. DB 스키마 — workers/supabase/migration.sql                                                                                                                         │
+│                                                                                                                                                                       │
+│ items 테이블에 3개 컬럼 추가:                                                                                                                                         │
+│ ALTER TABLE public.items                                                                                                                                              │
+│   ADD COLUMN IF NOT EXISTS trade_place_name TEXT,                                                                                                                     │
+│   ADD COLUMN IF NOT EXISTS trade_place_lat DOUBLE PRECISION,                                                                                                          │
+│   ADD COLUMN IF NOT EXISTS trade_place_lng DOUBLE PRECISION;                                                                                                          │
+│                                                                                                                                                                       │
+│ 2. Workers API — workers/src/routes/items.ts                                                                                                                          │
+│                                                                                                                                                                       │
+│ - POST /items: body에 tradePlaceName, tradePlaceLat, tradePlaceLng 수신 → insert에 포함                                                                               │
+│ - PATCH /items/:id: 위 3개 필드 업데이트 지원                                                                                                                         │
+│ - SELECT 쿼리: ITEM_SELECT_FIELDS에 trade_place_name, trade_place_lat, trade_place_lng 추가                                                                           │
+│                                                                                                                                                                       │
+│ 3. Workers 직렬화 — workers/src/lib/serializers.ts                                                                                                                    │
+│                                                                                                                                                                       │
+│ - NearbyItemRow 타입에 trade_place_name, trade_place_lat, trade_place_lng 추가                                                                                        │
+│ - ItemResponse 타입에 tradePlaceName, tradePlaceLat, tradePlaceLng 추가                                                                                               │
+│ - serializeItem()에서 snake_case → camelCase 매핑                                                                                                                     │
+│                                                                                                                                                                       │
+│ 4. 모바일 타입 — apps/mobile/types/index.ts                                                                                                                           │
+│                                                                                                                                                                       │
+│ - Item 인터페이스에 tradePlaceName?, tradePlaceLat?, tradePlaceLng? 추가                                                                                              │
+│                                                                                                                                                                       │
+│ 5. 모바일 API 매핑 — apps/mobile/lib/api.ts                                                                                                                           │
+│                                                                                                                                                                       │
+│ - mapItem()에 3개 필드 매핑 추가                                                                                                                                      │
+│                                                                                                                                                                       │
+│ 6. 업로드 페이지 — apps/mobile/app/(tabs)/upload.tsx                                                                                                                  │
+│                                                                                                                                                                       │
+│ - 가격 섹션 아래에 "거래 희망 장소" 섹션 추가                                                                                                                         │
+│ - UI: 섹션 레이블 + 지도 영역 (react-native-maps MapView, 높이 180, 라운드)                                                                                           │
+│ - 지도 중앙에 드래그 가능한 마커 (기본 위치: 사용자의 동네 좌표)                                                                                                      │
+│ - 지도 아래 장소명 입력 TextInput                                                                                                                                     │
+│ - "장소 제거" 버튼 (선택 해제 가능)                                                                                                                                   │
+│ - state: tradePlaceName, tradePlaceLat, tradePlaceLng                                                                                                                 │
+│ - createMutation에 3개 필드 포함                                                                                                                                      │
+│                                                                                                                                                                       │
+│ 7. 상세 페이지 — apps/mobile/app/item/[id].tsx                                                                                                                        │
+│                                                                                                                                                                       │
+│ - description 아래, meta 위에 "거래 희망 장소" 섹션 추가 (tradePlaceName이 있을 때만)                                                                                 │
+│ - 구성:                                                                                                                                                               │
+│   - 거래 희망 장소  장소명 > 텍스트 행 (볼드 + 일반)                                                                                                                  │
+│   - MapView 미리보기 (높이 160, borderRadius 14, 스크롤/줌 비활성화, 마커 1개)                                                                                        │
+│ - 지도 탭 시 시스템 지도 앱으로 열기 (Linking.openURL)                                                                                                                │
+│                                                                                                                                                                       │
+│ 8. 수정 페이지 — apps/mobile/app/item/edit/[id].tsx                                                                                                                   │
+│                                                                                                                                                                       │
+│ - 업로드와 동일한 거래 희망 장소 UI 추가                                                                                                                              │
+│ - 기존 값 로드하여 초기화                                                                                                                                             │
+│ - updateMutation에 3개 필드 포함                                                                                                                                      │
+│                                                                                                                                                                       │
+│ 파일 목록                                                                                                                                                             │
+│                                                                                                                                                                       │
+│ ┌────────────────────────────────────┬───────────────────────────────────────────┐                                                                                    │
+│ │                파일                │                   변경                    │                                                                                    │
+│ ├────────────────────────────────────┼───────────────────────────────────────────┤                                                                                    │
+│ │ workers/supabase/migration.sql     │ ALTER TABLE 3 columns                     │                                                                                    │
+│ ├────────────────────────────────────┼───────────────────────────────────────────┤                                                                                    │
+│ │ workers/src/routes/items.ts        │ POST/PATCH에 3필드 추가, SELECT 쿼리 수정 │                                                                                    │
+│ ├────────────────────────────────────┼───────────────────────────────────────────┤                                                                                    │
+│ │ workers/src/lib/serializers.ts     │ 타입 + 직렬화 함수 확장                   │                                                                                    │
+│ ├────────────────────────────────────┼───────────────────────────────────────────┤                                                                                    │
+│ │ apps/mobile/types/index.ts         │ Item 인터페이스 확장                      │                                                                                    │
+│ ├────────────────────────────────────┼───────────────────────────────────────────┤                                                                                    │
+│ │ apps/mobile/lib/api.ts             │ mapItem 확장                              │                                                                                    │
+│ ├────────────────────────────────────┼───────────────────────────────────────────┤                                                                                    │
+│ │ apps/mobile/app/(tabs)/upload.tsx  │ 거래 희망 장소 섹션 UI + state            │                                                                                    │
+│ ├────────────────────────────────────┼───────────────────────────────────────────┤                                                                                    │
+│ │ apps/mobile/app/item/[id].tsx      │ 지도 미리보기 섹션                        │                                                                                    │
+│ ├────────────────────────────────────┼───────────────────────────────────────────┤                                                                                    │
+│ │ apps/mobile/app/item/edit/[id].tsx │ 거래 희망 장소 편집 UI                    │                                                                                    │
+│ └────────────────────────────────────┴───────────────────────────────────────────┘                                                                                    │
+│                                                                                                                                                                       │
+│ 재사용 자원                                                                                                                                                           │
+│                                                                                                                                                                       │
+│ - react-native-maps (v1.20.1) — 이미 설치됨, 아직 사용되지 않음                                                                                                       │
+│ - useLocationStore — 사용자 동네 좌표를 거래 장소 초기값으로 사용                                                                                                     │
+│ - ITEM_SELECT_FIELDS / serializeItem() — 기존 패턴 따라 확장                                                                                                          │
+│                                                                                                                                                                       │
+│ 검증                                                                                                                                                                  │
+│                                                                                                                                                                       │
+│ 1. Supabase SQL Editor에서 migration.sql 재실행 → 컬럼 생성 확인                                                                                                      │
+│ 2. npx wrangler deploy 실행                                                                                                                                           │
+│ 3. 상품 등록: 거래 희망 장소 지도에서 마커 이동 + 장소명 입력 → 등록                                                                                                  │
+│ 4. 상세 페이지: 지도 미리보기 + 장소명 표시 확인                                                                                                                      │
+│ 5. 장소 없이 등록 → 상세 페이지에서 거래 희망 장소 섹션 숨김 확인                                                                                                     │
+│ 6. 수정 페이지: 기존 장소 로드 + 변경 + 저장 확인                                                                                                                     │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+⏺ I'll start by reading all the files that need to be modified in parallel.
+
+⏺ Read 8 files (ctrl+o to expand)
+
+⏺ Now I have a clear picture of the codebase. Let me implement all changes.
+
+⏺ 1. DB 스키마 — migration.sql
+
+⏺ Update(supabase/migration.sql)
+  ⎿  Added 5 lines
+      47  
+      48  ALTER TABLE public.items ALTER COLUMN condition DROP NOT NULL;
+      49  
+      50 +ALTER TABLE public.items                                                                                                                                
+      51 +  ADD COLUMN IF NOT EXISTS trade_place_name TEXT,                                                                                                       
+      52 +  ADD COLUMN IF NOT EXISTS trade_place_lat DOUBLE PRECISION,                                                                                            
+      53 +  ADD COLUMN IF NOT EXISTS trade_place_lng DOUBLE PRECISION;                                                                                            
+      54 +                                                                                                                                                        
+      55  CREATE TABLE IF NOT EXISTS public.likes (
+      56    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      57    user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+
+⏺ 2. Workers API — items.ts
+
+⏺ Update(src/routes/items.ts)
+  ⎿  Added 1 line, removed 1 line
+      21  ]);
+      22  
+      23  const ITEM_SELECT_FIELDS =
+      24 -  'id, seller_id, title, description, category, size, brand, price, condition, status, images, location_name, lat, lng, views, created_at';             
+      24 +  'id, seller_id, title, description, category, size, brand, price, condition, status, images, location_name, lat, lng, views, created_at               
+         +, trade_place_name, trade_place_lat, trade_place_lng';                                                                                                  
+      25  const SELLER_SELECT_FIELDS = 'id, nickname, avatar_url, rating, location_name';
+      26  
+      27  items.get('/', async (c) => {
+
+⏺ Now add trade place fields to POST body type and insert:
+
+⏺ Update(src/routes/items.ts)
+  ⎿  Added 3 lines
+      155      locationName?: string;
+      156      lat?: number;
+      157      lng?: number;
+      158 +    tradePlaceName?: string;                                                                                                                           
+      159 +    tradePlaceLat?: number;                                                                                                                            
+      160 +    tradePlaceLng?: number;                                                                                                                            
+      161    }>();
+      162  
+      163    const hasValidPrice = Number.isFinite(body.price) && body.price >= 0;
+
+⏺ Add trade place fields to insertData:
+
+⏺ Update(src/routes/items.ts)
+  ⎿  Added 3 lines
+      194      condition: body.condition || null,
+      195      images: body.images,
+      196      location_name: body.locationName?.trim() || null,
+      197 +    trade_place_name: body.tradePlaceName?.trim() || null,                                                                                             
+      198 +    trade_place_lat: typeof body.tradePlaceLat === 'number' ? body.tradePlaceLat : null,                                                               
+      199 +    trade_place_lng: typeof body.tradePlaceLng === 'number' ? body.tradePlaceLng : null,                                                               
+      200    };
+      201  
+      202    if (typeof body.lat === 'number' && typeof body.lng === 'number') {
+
+⏺ Now add trade place fields to PATCH body type and update logic:
+
+⏺ Update(src/routes/items.ts)
+  ⎿  Added 3 lines
+      238      locationName?: string | null;
+      239      lat?: number;
+      240      lng?: number;
+      241 +    tradePlaceName?: string | null;                                                                                                                    
+      242 +    tradePlaceLat?: number | null;                                                                                                                     
+      243 +    tradePlaceLng?: number | null;                                                                                                                     
+      244    }>();
+      245  
+      246    const supabase = getSupabase(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
+
+⏺ Add trade place update handling before if (Object.keys(updateData).length === 0):
+
+⏺ Update(src/routes/items.ts)
+  ⎿  Added 12 lines
+      331      updateData.lng = body.lng;
+      332    }
+      333  
+      334 +  if (body.tradePlaceName !== undefined) {                                                                                                             
+      335 +    updateData.trade_place_name = body.tradePlaceName?.trim() || null;                                                                                 
+      336 +  }                                                                                                                                                    
+      337 +                                                                                                                                                       
+      338 +  if (body.tradePlaceLat !== undefined) {                                                                                                              
+      339 +    updateData.trade_place_lat = typeof body.tradePlaceLat === 'number' ? body.tradePlaceLat : null;                                                   
+      340 +  }                                                                                                                                                    
+      341 +                                                                                                                                                       
+      342 +  if (body.tradePlaceLng !== undefined) {                                                                                                              
+      343 +    updateData.trade_place_lng = typeof body.tradePlaceLng === 'number' ? body.tradePlaceLng : null;                                                   
+      344 +  }                                                                                                                                                    
+      345 +                                                                                                                                                       
+      346    if (Object.keys(updateData).length === 0) {
+      347      return c.json({ error: 'Nothing to update' }, 400);
+      348    }
+
+⏺ 3. Workers serializers
+
+⏺ Update(src/lib/serializers.ts)
+  ⎿  Added 3 lines
+      32    lat?: Nullable<number | string>;
+      33    lng?: Nullable<number | string>;
+      34    views?: Nullable<number>;
+      35 +  trade_place_name?: Nullable<string>;                                                                                                                  
+      36 +  trade_place_lat?: Nullable<number | string>;                                                                                                          
+      37 +  trade_place_lng?: Nullable<number | string>;                                                                                                          
+      38    created_at: string;
+      39    seller_id: string;
+      40    seller_nickname?: Nullable<string>;
+
+⏺ Update(src/lib/serializers.ts)
+  ⎿  Added 3 lines
+      67    lat: number | null;
+      68    lng: number | null;
+      69    views: number;
+      70 +  tradePlaceName: string | null;                                                                                                                        
+      71 +  tradePlaceLat: number | null;                                                                                                                         
+      72 +  tradePlaceLng: number | null;                                                                                                                         
+      73    createdAt: string;
+      74    sellerId: string;
+      75    seller: {
+
+⏺ Update(src/lib/serializers.ts)
+  ⎿  Added 3 lines
+      128      lat: Number.isFinite(lat) ? lat : null,
+      129      lng: Number.isFinite(lng) ? lng : null,
+      130      views: item.views ?? 0,
+      131 +    tradePlaceName: item.trade_place_name ?? null,                                                                                                     
+      132 +    tradePlaceLat: (() => { const v = toNumber(item.trade_place_lat, Number.NaN); return Number.isFinite(v) ? v : null; })(),                          
+      133 +    tradePlaceLng: (() => { const v = toNumber(item.trade_place_lng, Number.NaN); return Number.isFinite(v) ? v : null; })(),                          
+      134      createdAt: item.created_at,
+      135      sellerId: item.seller_id,
+      136      seller: {
+
+⏺ 4. Mobile types
+
+⏺ Update(~/workspace/Clothes/apps/mobile/types/index.ts)
+  ⎿  Added 3 lines
+      24    createdAt: string;                                                                                                                                    
+      25    seller?: User;                                                                                                                                        
+      26    description?: string;                                                                                                                                 
+      27 +  tradePlaceName?: string;                                                                                                                              
+      28 +  tradePlaceLat?: number;                                                                                                                               
+      29 +  tradePlaceLng?: number;                                                                                                                               
+      30  }                                                                                                                                                              
+      31                                                                                                                                                          
+      32  export type Category =                                                                                                                                         
+                                                                                   
+⏺ 5. Mobile API mapping                                  
+                                          
+⏺ Update(~/workspace/Clothes/apps/mobile/lib/api.ts)       
+  ⎿  Added 3 lines                        
+      257      createdAt: raw.createdAt ?? raw.created_at ?? new Date(0).toISOString(),                                                                           
+      258      seller: raw.seller ? mapUser(raw.seller) : undefined,                                                                                              
+      259      description: raw.description ?? undefined,                                                                                                                
+      260 +    tradePlaceName: raw.tradePlaceName ?? raw.trade_place_name ?? undefined,                                                                           
+      261 +    tradePlaceLat: (() => { const v = toNumber(raw.tradePlaceLat ?? raw.trade_place_lat, Number.NaN); return Number.isFinite(v) ? v : undefined; })(),        
+      262 +    tradePlaceLng: (() => { const v = toNumber(raw.tradePlaceLng ?? raw.trade_place_lng, Number.NaN); return Number.isFinite(v) ? v : undefined; })(), 
+      263    };                                                                                                                                                          
+      264  }                                                                                                                                                      
+      265  
+
+⏺ 6. Upload page — upload.tsx                                    
+                                          
+⏺ Update(~/workspace/Clothes/apps/mobile/app/(tabs)/upload.tsx)  
+  ⎿  Added 1 line                         
+      17  import { useAuthStore } from '../../stores/auth.store';                                                                                                 
+      18  import { useLocationStore } from '../../stores/location.store';                                                                                         
+      19  import { itemsApi, uploadApi } from '../../lib/api';                                                                                                           
+      20 +import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';                                                                                   
+      21                                                                                                                                                                 
+      22  const ORANGE = '#FF6F0F';                                                                                                                               
+      23  const CATEGORIES = ['상의', '원피스', '아우터', '팬츠', '스커트', '언더웨어', '신발', '가방', '기타'];                                                         
+                                                                                   
+⏺ Add trade place state variables:                               
+                                          
+⏺ Update(~/workspace/Clothes/apps/mobile/app/(tabs)/upload.tsx)  
+  ⎿  Added 4 lines                        
+      36    const [brand, setBrand] = useState('');                                                                                                               
+      37    const [price, setPrice] = useState('');                                                                                                               
+      38    const [isFree, setIsFree] = useState(false);                                                                                                                 
+      39 +  const [tradePlaceName, setTradePlaceName] = useState('');                                                                                             
+      40 +  const [tradePlaceLat, setTradePlaceLat] = useState<number | null>(null);                                                                                     
+      41 +  const [tradePlaceLng, setTradePlaceLng] = useState<number | null>(null);                                                                              
+      42 +  const [showTradePlace, setShowTradePlace] = useState(false);                                                                                                 
+      43                                                                                                                                                          
+      44    const resetForm = () => {
+      45      setImages([]);
+
+⏺ Reset trade place in resetForm:                                
+                                          
+⏺ Update(~/workspace/Clothes/apps/mobile/app/(tabs)/upload.tsx)  
+  ⎿  Added 4 lines                        
+      49      setBrand('');                                                                                                                                       
+      50      setPrice('');                                                                                                                                       
+      51      setIsFree(false);                                                                                                                                          
+      52 +    setTradePlaceName('');                                                                                                                              
+      53 +    setTradePlaceLat(null);                                                                                                                                    
+      54 +    setTradePlaceLng(null);                                                                                                                                 
+      55 +    setShowTradePlace(false);                                                                                                                                  
+      56    };                                                                                                                                                        
+      57  
+      58    if (isLoading) {
+
+⏺ Add trade place fields to createMutation:                     
+                                          
+⏺ Update(~/workspace/Clothes/apps/mobile/app/(tabs)/upload.tsx) 
+  ⎿  Added 3 lines                        
+       94          locationName: locationName || undefined,                                                                                                       
+       95          lat: lat ?? undefined,                                                                                                                         
+       96          lng: lng ?? undefined,                                                                                                                                
+       97 +        tradePlaceName: showTradePlace && tradePlaceName.trim() ? tradePlaceName.trim() : undefined,                                                   
+       98 +        tradePlaceLat: showTradePlace && tradePlaceLat !== null ? tradePlaceLat : undefined,                                                                  
+       99 +        tradePlaceLng: showTradePlace && tradePlaceLng !== null ? tradePlaceLng : undefined,                                                               
+      100        });                                                                                                                                                     
+      101      },                                                                                                                                                     
+      102      onSuccess: () => {
+
+⏺ Now add the trade place UI section after the price section:   
+                                          
+⏺ Update(~/workspace/Clothes/apps/mobile/app/(tabs)/upload.tsx)  
+  ⎿  Added 68 lines                                        
+      275            </View>                                                                                                                                      
+      276          )}                                                                                                                                             
+      277                                                                                                                                                                
+      278 +        {/* 거래 희망 장소 */}                                                                                                                         
+      279 +        <Text style={styles.sectionLabel}>거래 희망 장소 <Text style={styles.optional}>(선택)</Text></Text>                                                   
+      280 +        {!showTradePlace ? (                                                                                                                           
+      281 +          <TouchableOpacity                                                                                                                                   
+      282 +            style={styles.tradePlaceAddBtn}                                                                                                            
+      283 +            onPress={() => {                                                                                                                           
+      284 +              setShowTradePlace(true);                                                                                                                 
+      285 +              if (tradePlaceLat === null && lat !== null && lng !== null) {                                                                            
+      286 +                setTradePlaceLat(lat);                                                                                                                 
+      287 +                setTradePlaceLng(lng);                                                                                                                 
+      288 +              }                                                                                                                                        
+      289 +            }}                                                                                                                                         
+      290 +          >                                                                                                                                            
+      291 +            <Text style={styles.tradePlaceAddBtnText}>+ 장소 추가</Text>                                                                               
+      292 +          </TouchableOpacity>                                                                                                                          
+      293 +        ) : (                                                                                                                                          
+      294 +          <View>                                                                                                                                       
+      295 +            <View style={styles.tradePlaceMapWrap}>                                                                                                    
+      296 +              <MapView                                                                                                                                 
+      297 +                style={styles.tradePlaceMap}                                                                                                           
+      298 +                initialRegion={{                                                                                                                       
+      299 +                  latitude: tradePlaceLat ?? lat ?? 37.5665,                                                                                           
+      300 +                  longitude: tradePlaceLng ?? lng ?? 126.978,                                                                                          
+      301 +                  latitudeDelta: 0.005,                                                                                                                
+      302 +                  longitudeDelta: 0.005,                                                                                                               
+      303 +                }}                                                                                                                                     
+      304 +                region={tradePlaceLat !== null && tradePlaceLng !== null ? {                                                                           
+      305 +                  latitude: tradePlaceLat,                                                                                                             
+      306 +                  longitude: tradePlaceLng,                                                                                                            
+      307 +                  latitudeDelta: 0.005,                                                                                                                
+      308 +                  longitudeDelta: 0.005,                                                                                                               
+      309 +                } : undefined}                                                                                                                         
+      310 +              >                                                                                                                                        
+      311 +                {tradePlaceLat !== null && tradePlaceLng !== null && (                                                                                 
+      312 +                  <Marker                                                                                                                              
+      313 +                    coordinate={{ latitude: tradePlaceLat, longitude: tradePlaceLng }}                                                                 
+      314 +                    draggable                                                                                                                          
+      315 +                    onDragEnd={(e) => {                                                                                                                
+      316 +                      setTradePlaceLat(e.nativeEvent.coordinate.latitude);                                                                             
+      317 +                      setTradePlaceLng(e.nativeEvent.coordinate.longitude);                                                                            
+      318 +                    }}                                                                                                                                 
+      319 +                  />                                                                                                                                   
+      320 +                )}                                                                                                                                     
+      321 +              </MapView>                                                                                                                               
+      322 +            </View>                                                                                                                                    
+      323 +            <View style={styles.fieldBox}>                                                                                                             
+      324 +              <TextInput                                                                                                                               
+      325 +                style={styles.inlineInput}                                                                                                             
+      326 +                value={tradePlaceName}                                                                                                                 
+      327 +                onChangeText={setTradePlaceName}                                                                                                       
+      328 +                placeholder="장소명을 입력해주세요. (예: OO역 2번 출구)"                                                                               
+      329 +                placeholderTextColor="#aaa"                                                                                                            
+      330 +              />                                                                                                                                       
+      331 +            </View>                                                                                                                                    
+      332 +            <TouchableOpacity                                                                                                                          
+      333 +              style={styles.tradePlaceRemoveBtn}                                                                                                       
+      334 +              onPress={() => {                                                                                                                         
+      335 +                setShowTradePlace(false);                                                                                                              
+      336 +                setTradePlaceName('');                                                                                                                 
+      337 +                setTradePlaceLat(null);                                                                                                                
+      338 +                setTradePlaceLng(null);                                                                                                                
+      339 +              }}                                                                                                                                       
+      340 +            >                                                                                                                                          
+      341 +              <Text style={styles.tradePlaceRemoveBtnText}>장소 제거</Text>                                                                            
+      342 +            </TouchableOpacity>                                                                                                                        
+      343 +          </View>                                                                                                                                      
+      344 +        )}                                                                                                                                             
+      345 +                                                                                                                                                       
+      346          <View style={{ height: 100 }} />
+      347        </ScrollView>
+      348  
+
+⏺ Add styles for trade place in upload.tsx:                      
+                                                           
+⏺ Update(~/workspace/Clothes/apps/mobile/app/(tabs)/upload.tsx)  
+  ⎿  Added 27 lines                                        
+      543    submitBtnDisabled: { backgroundColor: '#f2f2f2' },                                                                                                   
+      544    submitBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },                                                                                   
+      545    submitBtnTextDisabled: { color: '#bbb' },                                                                                                                   
+      546 +                                                                                                                                                       
+      547 +  // 거래 희망 장소                                                                                                                                           
+      548 +  tradePlaceAddBtn: {                                                                                                                                  
+      549 +    borderWidth: 1,                                                                                                                                           
+      550 +    borderColor: '#e5e5e5',                                                                                                                                
+      551 +    borderRadius: 12,                                                                                                                                  
+      552 +    paddingVertical: 16,                                                                                                                               
+      553 +    alignItems: 'center',                                                                                                                              
+      554 +    marginBottom: 6,                                                                                                                                   
+      555 +  },                                                                                                                                                   
+      556 +  tradePlaceAddBtnText: { fontSize: 15, color: '#868686' },                                                                                            
+      557 +  tradePlaceMapWrap: {                                                                                                                                 
+      558 +    height: 180,                                                                                                                                       
+      559 +    borderRadius: 14,                                                                                                                                  
+      560 +    overflow: 'hidden',                                                                                                                                
+      561 +    marginBottom: 10,                                                                                                                                  
+      562 +    borderWidth: 1,                                                                                                                                    
+      563 +    borderColor: '#e5e5e5',                                                                                                                            
+      564 +  },                                                                                                                                                   
+      565 +  tradePlaceMap: { flex: 1 },                                                                                                                          
+      566 +  tradePlaceRemoveBtn: {                                                                                                                               
+      567 +    alignSelf: 'flex-start',                                                                                                                           
+      568 +    paddingVertical: 8,                                                                                                                                
+      569 +    marginTop: 4,                                                                                                                                      
+      570 +    marginBottom: 6,                                                                                                                                   
+      571 +  },                                                                                                                                                   
+      572 +  tradePlaceRemoveBtnText: { fontSize: 14, color: '#ff4d5d', fontWeight: '600' },                                                                      
+      573  });
+
+⏺ 7. Detail page — [id].tsx                                      
+                                                           
+⏺ Update(~/workspace/Clothes/apps/mobile/app/item/[id].tsx)      
+  ⎿  Added 2 lines                                         
+      10    Platform,                                                                                                                                             
+      11    ActionSheetIOS,                                                                                                                                       
+      12    Alert,                                                                                                                                                       
+      13 +  Linking,                                                                                                                                              
+      14  } from 'react-native';                                                                                                                                         
+      15 +import MapView, { Marker } from 'react-native-maps';                                                                                                        
+      16  import { SafeAreaView } from 'react-native-safe-area-context';                                                                                                 
+      17  import { useLocalSearchParams, useRouter } from 'expo-router';                                                                                              
+      18  import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';                                                                                 
+                                                                                                                                                                      
+⏺ Add the trade place section between description and meta:      
+                                                           
+⏺ Update(~/workspace/Clothes/apps/mobile/app/item/[id].tsx)      
+  ⎿  Added 46 lines                                        
+      283              <Text style={styles.description}>{item.description}</Text>                                                                                 
+      284            )}                                                                                                                                           
+      285                                                                                                                                                                
+      286 +          {item.tradePlaceName && item.tradePlaceLat && item.tradePlaceLng && (                                                                        
+      287 +            <View style={styles.tradePlaceSection}>                                                                                                           
+      288 +              <TouchableOpacity                                                                                                                            
+      289 +                style={styles.tradePlaceHeader}                                                                                                               
+      290 +                onPress={() => {                                                                                                                           
+      291 +                  const url = Platform.select({                                                                                                        
+      292 +                    ios: `maps:0,0?q=${item.tradePlaceLat},${item.tradePlaceLng}`,                                                                     
+      293 +                    android:                                                                                                                           
+          +`geo:${item.tradePlaceLat},${item.tradePlaceLng}?q=${item.tradePlaceLat},${item.tradePlaceLng}(${encodeURIComponent(item.tradePlaceName!)})`,          
+      294 +                  });                                                                                                                                  
+      295 +                  if (url) Linking.openURL(url);                                                                                                       
+      296 +                }}                                                                                                                                     
+      297 +              >                                                                                                                                        
+      298 +                <Text style={styles.tradePlaceLabel}>거래 희망 장소</Text>                                                                             
+      299 +                <Text style={styles.tradePlaceName}> {item.tradePlaceName} {'>'}</Text>                                                                
+      300 +              </TouchableOpacity>                                                                                                                      
+      301 +              <TouchableOpacity                                                                                                                        
+      302 +                activeOpacity={0.9}                                                                                                                    
+      303 +                onPress={() => {                                                                                                                       
+      304 +                  const url = Platform.select({                                                                                                        
+      305 +                    ios: `maps:0,0?q=${item.tradePlaceLat},${item.tradePlaceLng}`,                                                                     
+      306 +                    android:                                                                                                                           
+          +`geo:${item.tradePlaceLat},${item.tradePlaceLng}?q=${item.tradePlaceLat},${item.tradePlaceLng}(${encodeURIComponent(item.tradePlaceName!)})`,          
+      307 +                  });                                                                                                                                  
+      308 +                  if (url) Linking.openURL(url);                                                                                                       
+      309 +                }}                                                                                                                                     
+      310 +              >                                                                                                                                        
+      311 +                <View style={styles.tradePlaceMapWrap}>                                                                                                
+      312 +                  <MapView                                                                                                                             
+      313 +                    style={styles.tradePlaceMap}                                                                                                       
+      314 +                    initialRegion={{                                                                                                                   
+      315 +                      latitude: item.tradePlaceLat!,                                                                                                   
+      316 +                      longitude: item.tradePlaceLng!,                                                                                                  
+      317 +                      latitudeDelta: 0.005,                                                                                                            
+      318 +                      longitudeDelta: 0.005,                                                                                                           
+      319 +                    }}                                                                                                                                 
+      320 +                    scrollEnabled={false}                                                                                                              
+      321 +                    zoomEnabled={false}                                                                                                                
+      322 +                    rotateEnabled={false}                                                                                                              
+      323 +                    pitchEnabled={false}                                                                                                               
+      324 +                  >                                                                                                                                    
+      325 +                    <Marker coordinate={{ latitude: item.tradePlaceLat!, longitude: item.tradePlaceLng! }} />                                          
+      326 +                  </MapView>                                                                                                                           
+      327 +                </View>                                                                                                                                
+      328 +              </TouchableOpacity>                                                                                                                      
+      329 +            </View>                                                                                                                                    
+      330 +          )}                                                                                                                                           
+      331 +                                                                                                                                                       
+      332            <View style={styles.meta}>
+      333              <Text style={styles.metaText}>
+      334                좋아요 {likesCount.toLocaleString('ko-KR')}  조회 {viewsCountText}
+  ⎿  You've hit your limit · resets 8pm (Asia/Seoul)
